@@ -11,50 +11,49 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: npm
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18
 
-      - name: Install dependencies
-        run: npm ci
+    - name: Install global dependencies
+      run: |
+        npm install -g @ionic/cli
+        npm install -g capacitor-resources
 
-      - name: Ensure Capacitor Android Installed
-        run: npm install @capacitor/android
+    - name: Install project dependencies
+      run: |
+        npm install
+        npm install @capacitor/core @capacitor/cli @capacitor/android
 
-      - name: Add Android Platform if Missing
-        run: |
-          npx cap ls | grep android || npx cap add android
+    - name: Add Android platform if missing
+      run: |
+        npx cap ls | grep android || npx cap add android
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
+    - name: Set up Java JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+    - name: Set up Android SDK
+      uses: android-actions/setup-android@v3
 
-      - name: Create local.properties
-        run: |
-          mkdir -p android
-          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+    - name: Create local.properties for Android SDK
+      run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
-      - name: Build Web Assets
-        run: npm run build
+    - name: Build Android APK
+      run: |
+        npm run build
+        npx cap sync android
+        cd android
+        ./gradlew assembleDebug
 
-      - name: Copy to Android
-        run: npx cap copy android
-
-      - name: Build Android APK
-        run: cd android && ./gradlew assembleDebug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-debug.apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug.apk
+        path: android/app/build/outputs/apk/debug/app-debug.apk
