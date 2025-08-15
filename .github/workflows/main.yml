@@ -11,55 +11,48 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: npm
 
-      # 3. Install dependencies (force refresh if lockfile mismatch)
       - name: Install dependencies
-        run: |
-          rm -f package-lock.json
-          npm install
+        run: npm ci
 
-      # 4. Add Capacitor Android platform if missing
-      - name: Add Android platform
+      - name: Ensure Capacitor Android Installed
+        run: npm install @capacitor/android
+
+      - name: Add Android Platform if Missing
         run: |
           npx cap ls | grep android || npx cap add android
 
-      # 5. Setup Java for Gradle
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
           java-version: '17'
+          distribution: 'temurin'
 
-      # 6. Setup Android SDK
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 7. Create local.properties to fix "No such file or directory"
       - name: Create local.properties
         run: |
           mkdir -p android
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
-      # 8. Sync Capacitor with Android
-      - name: Sync Capacitor
-        run: npx cap sync android
+      - name: Build Web Assets
+        run: npm run build
 
-      # 9. Build APK
-      - name: Build APK
-        run: |
-          cd android
-          ./gradlew assembleDebug
+      - name: Copy to Android
+        run: npx cap copy android
 
-      # 10. Upload APK as artifact
+      - name: Build Android APK
+        run: cd android && ./gradlew assembleDebug
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
