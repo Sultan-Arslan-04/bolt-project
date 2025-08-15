@@ -2,8 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -11,49 +10,84 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      # 1) Checkout
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 18
+      # 2) Node + npm cache
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
 
-    - name: Install global dependencies
-      run: |
-        npm install -g @ionic/cli
-        npm install -g capacitor-resources
+      # 3) Install deps (ci with safe fallback) + align Capacitor to v6
+      - name: Install dependencies and align Capacitor v6
+        run: |
+          # Try clean install first; if lockfile is out of sync, fall back to install
+          if npm ci; then
+            echo "npm ci succeeded"
+          else
+            echo "npm ci failed, falling back to npm install..."
+            rm -f package-lock.json
+            npm install
+          fi
 
-    - name: Install project dependencies
-      run: |
-        npm install
-        npm install @capacitor/core @capacitor/cli @capacitor/android
+          # Ensure Capacitor packages are on the same major (v6) to avoid ERESOLVE
+          npm install @capacitor/core@^6 @capacitor/cli@^6 @capacitor/android@^6
 
-    - name: Add Android platform if missing
-      run: |
-        npx cap ls | grep android || npx cap add android
+      # 4) Add Android platform if missing
+      - name: Ensure Android platform exists
+        run: |
+          npx cap ls | grep -q "android" || npx cap add android
 
-    - name: Set up Java JDK
-      uses: actions/setup-java@v4
-      with:
-        distribution: temurin
-        java-version: 17
+      # 5) Java 17 for Gradle
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
 
-    - name: Set up Android SDK
-      uses: android-actions/setup-android@v3
+      # 6) Android SDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-    - name: Create local.properties for Android SDK
-      run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+      # 7) Gradle cache (faster builds)
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
-    - name: Build Android APK
-      run: |
-        npm run build
-        npx cap sync android
-        cd android
-        ./gradlew assembleDebug
+      # 8) Build web assets (Vite/React)
+      - name: Build web assets
+        run: npm run build
 
-    - name: Upload APK artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-debug.apk
-        path: android/app/build/outputs/apk/debug/app-debug.apk
+      # 9) Create local.properties (SDK path) and sync Capacitor
+      - name: Configure SDK path and Capacitor sync
+        run: |
+          mkdir -p android
+          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+          npx cap copy android
+          npx cap sync android
+
+      # 10) Make Gradle wrapper executable
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
+
+      # 11) Build APK (Debug)
+      - name: Build Android APK (Debug)
+        run: |
+          cd android
+          ./gradlew --no-daemon assembleDebug
+
+      # 12) Upload artifact
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
