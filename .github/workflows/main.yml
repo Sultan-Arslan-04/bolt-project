@@ -4,53 +4,40 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2️⃣ Install Java (required for Gradle)
-      - name: Set up JDK 17
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web assets
+        run: npm run build
+
+      - name: Add Capacitor Android
+        run: |
+          npx cap add android || true
+          mkdir -p android
+
+      - name: Set Android SDK location
+        run: echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      # 3️⃣ Install Android SDK
-      - name: Install Android SDK
-        uses: android-actions/setup-android@v3
-
-      # 4️⃣ Create local.properties (SDK path)
-      - name: Set up local.properties
-        run: |
-          echo "sdk.dir=$ANDROID_HOME" > android/local.properties
-
-      # 5️⃣ Grant execution permission for Gradle
-      - name: Make gradlew executable
-        run: chmod +x android/gradlew
-
-      # 6️⃣ Build APK (Debug & Release)
-      - name: Build Debug APK
+      - name: Build APK
         run: cd android && ./gradlew assembleDebug
-
-      - name: Build Release APK
-        run: cd android && ./gradlew assembleRelease
-
-      # 7️⃣ Upload APK as an artifact
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Upload Release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
